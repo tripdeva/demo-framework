@@ -1,8 +1,6 @@
 plugins {
-    id 'java-library' apply false
     id 'org.springframework.boot' version "${springBootVersion}" apply false
     id 'io.spring.dependency-management' version "${dependencyManagementVersion}" apply false
-    id 'maven-publish' apply false
 }
 
 // .env 파일 탐색 (상위 디렉토리까지)

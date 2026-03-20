@@ -3,7 +3,7 @@
 dependencies {
     implementation project(':demo-core')
 
-    // QueryDSL 7.x
+    // OpenFeign QueryDSL 6.x (Jakarta 기본 포함)
     implementation "io.github.openfeign.querydsl:querydsl-jpa:${querydslVersion}"
     implementation "io.github.openfeign.querydsl:querydsl-core:${querydslVersion}"
 
@@ -18,7 +18,7 @@ dependencies {
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     // QueryDSL APT (Q클래스 생성)
-    annotationProcessor "io.github.openfeign.querydsl:querydsl-apt:${querydslVersion}:jakarta"
+    annotationProcessor "io.github.openfeign.querydsl:querydsl-apt:${querydslVersion}:jpa"
     annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 
     // ==================== Test ====================
@@ -27,7 +27,7 @@ dependencies {
     testAnnotationProcessor project(':demo-storage-jpa-processor')
 
     // QueryDSL APT (Q클래스 생성) - 생성된 Entity에 대해
-    testAnnotationProcessor "io.github.openfeign.querydsl:querydsl-apt:${querydslVersion}:jakarta"
+    testAnnotationProcessor "io.github.openfeign.querydsl:querydsl-apt:${querydslVersion}:jpa"
     testAnnotationProcessor 'jakarta.persistence:jakarta.persistence-api'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

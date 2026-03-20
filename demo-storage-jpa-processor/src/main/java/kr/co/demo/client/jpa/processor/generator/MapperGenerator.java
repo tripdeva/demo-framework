@@ -84,7 +84,7 @@ public class MapperGenerator {
 
 		ClassName domainType = ClassName.get(packageName, domainClassName);
 		ClassName entityType = ClassName.get(packageName + ".entity", entityClassName);
-		ClassName domainMapperInterface = ClassName.get("kr.co.demo.mapper", "DomainMapper");
+		ClassName domainMapperInterface = ClassName.get("kr.co.demo.core.mapper", "DomainMapper");
 
 		// 매핑 대상 필드 수집 (StorageTransient, StorageRelation 제외)
 		List<VariableElement> fields = collectMappableFields(domainClass);
