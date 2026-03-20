@@ -1,0 +1,27 @@
+// demo-security: JWT + Session 인증 지원
+
+dependencies {
+    api project(':demo-core')
+    api project(':demo-spring-boot-starter')
+
+    // Spring Security
+    api 'org.springframework.boot:spring-boot-starter-security'
+
+    // JWT (JJWT)
+    api 'io.jsonwebtoken:jjwt-api:0.12.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+
+    // Web
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-web'
+}

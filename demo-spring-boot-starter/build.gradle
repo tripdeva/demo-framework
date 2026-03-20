@@ -1,8 +1,15 @@
-// demo-spring-boot-starter: @UseCase, @Adapter, AutoConfiguration
+// demo-spring-boot-starter: @UseCase, @Adapter, ApiResponse, GlobalExceptionHandler
 
 dependencies {
     api project(':demo-core')
     api 'org.springframework.boot:spring-boot-starter'
+
+    // Web (GlobalExceptionHandler, ApiResponse용)
+    compileOnly 'org.springframework.boot:spring-boot-starter-web'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
