@@ -120,15 +120,8 @@ public class DemoSecurityAutoConfiguration {
 	/**
 	 * CORS 설정.
 	 *
-	 * <p>{@link DemoCorsCustomizer} 빈으로 추가 설정 가능.
-	 * 완전 교체: {@code CorsConfigurationSource} 빈 직접 정의.
-	 */
-	/**
-	 * CORS 설정.
-	 *
-	 * <p>모든 값은 {@code security.cors.*} 프로퍼티에서 읽습니다.
-	 * 설정하지 않으면 CORS가 비어 있어 브라우저가 차단합니다.
-	 * 소비자가 반드시 origins를 설정해야 합니다.
+	 * <p>모든 값은 {@code security.cors.allowed-*} 프로퍼티에서 읽습니다.
+	 * 설정하지 않으면 CORS가 비활성화되어 브라우저가 차단합니다.
 	 *
 	 * <p>{@link DemoCorsCustomizer} 빈으로 추가 설정 가능.
 	 * 완전 교체: {@code CorsConfigurationSource} 빈 직접 정의.
@@ -143,14 +136,14 @@ public class DemoSecurityAutoConfiguration {
 		SecurityProperties.CorsProperties cors = properties.cors();
 
 		if (cors != null) {
-			if (cors.origins() != null) {
-				config.setAllowedOrigins(cors.origins());
+			if (cors.allowedOrigins() != null) {
+				config.setAllowedOrigins(cors.allowedOrigins());
 			}
-			if (cors.methods() != null) {
-				config.setAllowedMethods(cors.methods());
+			if (cors.allowedMethods() != null) {
+				config.setAllowedMethods(cors.allowedMethods());
 			}
-			if (cors.headers() != null) {
-				config.setAllowedHeaders(cors.headers());
+			if (cors.allowedHeaders() != null) {
+				config.setAllowedHeaders(cors.allowedHeaders());
 			}
 			if (cors.allowCredentials() != null) {
 				config.setAllowCredentials(cors.allowCredentials());

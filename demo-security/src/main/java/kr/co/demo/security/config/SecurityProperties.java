@@ -6,20 +6,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * 보안 설정 프로퍼티.
  *
- * <p>소비자 프로젝트에서 반드시 설정해야 합니다. 기본값 없음.
- *
  * <pre>{@code
  * security:
  *   public-urls:
  *     - /public/**
  *     - /health
  *   cors:
- *     origins:
+ *     allowed-origins:
  *       - http://localhost:3000
- *     methods:
+ *     allowed-methods:
  *       - GET
  *       - POST
- *     headers:
+ *     allowed-headers:
  *       - Authorization
  *       - Content-Type
  *     allow-credentials: true
@@ -35,12 +33,12 @@ public record SecurityProperties(
 		CorsProperties cors) {
 
 	/**
-	 * CORS 설정.
+	 * CORS 허용 설정.
 	 */
 	public record CorsProperties(
-			List<String> origins,
-			List<String> methods,
-			List<String> headers,
+			List<String> allowedOrigins,
+			List<String> allowedMethods,
+			List<String> allowedHeaders,
 			Boolean allowCredentials,
 			Long maxAge) {
 	}
