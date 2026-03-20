@@ -132,6 +132,26 @@ public class EntityGenerator {
 					.build());
 		}
 
+		// @StorageCompositeId 복합키 필드 수집
+		List<VariableElement> compositeIdFields = new java.util.ArrayList<>();
+		for (Element enclosed : domainClass.getEnclosedElements()) {
+			if (enclosed.getKind() == ElementKind.FIELD
+					&& enclosed.getAnnotation(StorageCompositeId.class) != null) {
+				compositeIdFields.add((VariableElement) enclosed);
+			}
+		}
+
+		// 복합키가 있으면 IdClass 생성 + @IdClass 어노테이션 추가
+		if (!compositeIdFields.isEmpty()) {
+			String idClassName = domainClassName + "EntityId";
+			generateIdClass(compositeIdFields, packageName + ".entity", idClassName);
+			entityBuilder.addAnnotation(AnnotationSpec.builder(
+							ClassName.get("jakarta.persistence", "IdClass"))
+					.addMember("value", "$T.class",
+							ClassName.get(packageName + ".entity", idClassName))
+					.build());
+		}
+
 		// 도메인 클래스의 필드 순회
 		for (Element enclosed : domainClass.getEnclosedElements()) {
 			if (enclosed.getKind() != ElementKind.FIELD) continue;
@@ -190,6 +210,18 @@ public class EntityGenerator {
 								ClassName.get("jakarta.persistence", "GenerationType"))
 						.build());
 			}
+			return fieldBuilder.build();
+		}
+
+		// @StorageCompositeId → @Id (복합키 구성 필드)
+		StorageCompositeId compositeId = field.getAnnotation(StorageCompositeId.class);
+		if (compositeId != null) {
+			fieldBuilder.addAnnotation(ClassName.get("jakarta.persistence", "Id"));
+			String colName = NamingUtils.toSnakeCase(fieldName);
+			fieldBuilder.addAnnotation(AnnotationSpec.builder(
+							ClassName.get("jakarta.persistence", "Column"))
+					.addMember("name", "$S", colName)
+					.build());
 			return fieldBuilder.build();
 		}
 
@@ -377,6 +409,77 @@ public class EntityGenerator {
 		}
 
 		fieldBuilder.addAnnotation(builder.build());
+	}
+
+	/**
+	 * 복합키용 IdClass를 생성합니다.
+	 *
+	 * @param fields      복합키 필드 목록
+	 * @param packageName 생성 패키지
+	 * @param className   IdClass 이름
+	 * @throws IOException 파일 생성 실패 시
+	 */
+	private void generateIdClass(List<VariableElement> fields,
+	                              String packageName, String className) throws IOException {
+		TypeSpec.Builder idClassBuilder = TypeSpec.classBuilder(className)
+				.addModifiers(Modifier.PUBLIC)
+				.addSuperinterface(java.io.Serializable.class);
+
+		// 필드 + getter + setter
+		for (VariableElement field : fields) {
+			String name = field.getSimpleName().toString();
+			TypeName type = TypeName.get(field.asType());
+			idClassBuilder.addField(FieldSpec.builder(type, name, Modifier.PRIVATE).build());
+			idClassBuilder.addMethod(MethodSpec.methodBuilder("get" + NamingUtils.capitalize(name))
+					.addModifiers(Modifier.PUBLIC).returns(type)
+					.addStatement("return this.$N", name).build());
+			idClassBuilder.addMethod(MethodSpec.methodBuilder("set" + NamingUtils.capitalize(name))
+					.addModifiers(Modifier.PUBLIC).addParameter(type, name)
+					.addStatement("this.$N = $N", name, name).build());
+		}
+
+		// 기본 생성자
+		idClassBuilder.addMethod(MethodSpec.constructorBuilder()
+				.addModifiers(Modifier.PUBLIC).build());
+
+		// equals/hashCode (Objects 기반)
+		ClassName objects = ClassName.get("java.util", "Objects");
+
+		// equals
+		MethodSpec.Builder equalsBuilder = MethodSpec.methodBuilder("equals")
+				.addAnnotation(Override.class)
+				.addModifiers(Modifier.PUBLIC)
+				.addParameter(Object.class, "o")
+				.returns(boolean.class)
+				.addStatement("if (this == o) return true")
+				.addStatement("if (o == null || getClass() != o.getClass()) return false")
+				.addStatement("$L that = ($L) o", className, className);
+		StringBuilder equalsExpr = new StringBuilder();
+		for (int i = 0; i < fields.size(); i++) {
+			String name = fields.get(i).getSimpleName().toString();
+			if (i > 0) equalsExpr.append(" && ");
+			equalsExpr.append("$T.equals(this.").append(name).append(", that.").append(name).append(")");
+		}
+		Object[] equalsArgs = new Object[fields.size()];
+		java.util.Arrays.fill(equalsArgs, objects);
+		equalsBuilder.addStatement("return " + equalsExpr, equalsArgs);
+		idClassBuilder.addMethod(equalsBuilder.build());
+
+		// hashCode
+		StringBuilder hashArgs = new StringBuilder();
+		for (int i = 0; i < fields.size(); i++) {
+			if (i > 0) hashArgs.append(", ");
+			hashArgs.append(fields.get(i).getSimpleName().toString());
+		}
+		idClassBuilder.addMethod(MethodSpec.methodBuilder("hashCode")
+				.addAnnotation(Override.class)
+				.addModifiers(Modifier.PUBLIC)
+				.returns(int.class)
+				.addStatement("return $T.hash($L)", objects, hashArgs.toString())
+				.build());
+
+		JavaFile javaFile = JavaFile.builder(packageName, idClassBuilder.build()).build();
+		javaFile.writeTo(filer);
 	}
 
 	/**
