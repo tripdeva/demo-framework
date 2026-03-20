@@ -23,7 +23,7 @@ import java.util.List;
  */
 @StorageTable("orders")
 @StorageIndex(name = "idx_status", columns = {"status"})
-@StorageIndex(name = "idx_customer_status", columns = {"customer_name", "status"}, unique = true)
+@StorageIndex(name = "idx_customer_status", columns = {"customer_name", "status"})
 public class Order {
 
     @StorageId

@@ -146,17 +146,17 @@ class SchemaValidationTest {
 		}
 
 		@Test
-		@DisplayName("idx_customer_status UNIQUE 인덱스가 DB에 생성됨")
-		void uniqueIndexExists() throws Exception {
+		@DisplayName("idx_customer_status 복합 인덱스가 DB에 생성됨")
+		void compositeIndexExists() throws Exception {
 			try (Connection conn = dataSource.getConnection()) {
 				DatabaseMetaData meta = conn.getMetaData();
-				ResultSet indexes = meta.getIndexInfo(null, null, "ORDERS", true, false);
-				List<String> uniqueIndexNames = new ArrayList<>();
+				ResultSet indexes = meta.getIndexInfo(null, null, "ORDERS", false, false);
+				List<String> indexNames = new ArrayList<>();
 				while (indexes.next()) {
 					String name = indexes.getString("INDEX_NAME");
-					if (name != null) uniqueIndexNames.add(name.toUpperCase());
+					if (name != null) indexNames.add(name.toUpperCase());
 				}
-				assertThat(uniqueIndexNames).anyMatch(n -> n.contains("IDX_CUSTOMER_STATUS"));
+				assertThat(indexNames).anyMatch(n -> n.contains("IDX_CUSTOMER_STATUS"));
 			}
 		}
 	}

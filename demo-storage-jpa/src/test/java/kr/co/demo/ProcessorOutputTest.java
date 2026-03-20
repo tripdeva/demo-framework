@@ -133,7 +133,7 @@ class ProcessorOutputTest {
 			jakarta.persistence.Index idx1 = table.indexes()[1];
 			assertThat(idx1.name()).isEqualTo("idx_customer_status");
 			assertThat(idx1.columnList()).isEqualTo("customer_name, status");
-			assertThat(idx1.unique()).isTrue();
+			assertThat(idx1.unique()).isFalse();
 		}
 
 		@Test

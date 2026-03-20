@@ -9,11 +9,12 @@ dependencies {
     // Spring Boot Configuration Processor
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
-    // ==================== Test ====================
-
     // Storage MyBatis Processor (BaseMapper 자동 생성)
-    testAnnotationProcessor project(':demo-storage-mybatis-processor')
+    annotationProcessor project(':demo-storage-mybatis-processor')
+
+    // ==================== Test ====================
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.h2database:h2'
 }
+
