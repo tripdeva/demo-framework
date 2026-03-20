@@ -123,6 +123,16 @@ public class DemoSecurityAutoConfiguration {
 	 * <p>{@link DemoCorsCustomizer} 빈으로 추가 설정 가능.
 	 * 완전 교체: {@code CorsConfigurationSource} 빈 직접 정의.
 	 */
+	/**
+	 * CORS 설정.
+	 *
+	 * <p>모든 값은 {@code security.cors.*} 프로퍼티에서 읽습니다.
+	 * 설정하지 않으면 CORS가 비어 있어 브라우저가 차단합니다.
+	 * 소비자가 반드시 origins를 설정해야 합니다.
+	 *
+	 * <p>{@link DemoCorsCustomizer} 빈으로 추가 설정 가능.
+	 * 완전 교체: {@code CorsConfigurationSource} 빈 직접 정의.
+	 */
 	@Bean
 	@ConditionalOnMissingBean
 	public CorsConfigurationSource corsConfigurationSource(
@@ -130,23 +140,25 @@ public class DemoSecurityAutoConfiguration {
 			ObjectProvider<DemoCorsCustomizer> customizers) {
 
 		CorsConfiguration config = new CorsConfiguration();
+		SecurityProperties.CorsProperties cors = properties.cors();
 
-		List<String> origins = properties.corsUrls();
-		if (origins != null && !origins.isEmpty()) {
-			config.setAllowedOrigins(origins);
-		} else {
-			config.setAllowedOrigins(List.of(
-					"http://localhost:3000",
-					"http://localhost:5173",
-					"http://localhost:8080"));
+		if (cors != null) {
+			if (cors.origins() != null) {
+				config.setAllowedOrigins(cors.origins());
+			}
+			if (cors.methods() != null) {
+				config.setAllowedMethods(cors.methods());
+			}
+			if (cors.headers() != null) {
+				config.setAllowedHeaders(cors.headers());
+			}
+			if (cors.allowCredentials() != null) {
+				config.setAllowCredentials(cors.allowCredentials());
+			}
+			if (cors.maxAge() != null) {
+				config.setMaxAge(cors.maxAge());
+			}
 		}
-
-		config.setAllowedMethods(List.of(
-				"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-		config.setAllowedHeaders(List.of(
-				"Authorization", "Content-Type", "X-Requested-With"));
-		config.setAllowCredentials(true);
-		config.setMaxAge(3600L);
 
 		customizers.orderedStream().forEach(c -> c.customize(config));
 
