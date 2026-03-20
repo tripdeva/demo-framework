@@ -21,7 +21,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       - Authorization
  *       - Content-Type
  *     allow-credentials: true
- *     max-age: 3600
+ *     preflight-cache-seconds: 3600
  * }</pre>
  *
  * @author demo-framework
@@ -40,6 +40,6 @@ public record SecurityProperties(
 			List<String> allowedMethods,
 			List<String> allowedHeaders,
 			Boolean allowCredentials,
-			Long maxAge) {
+			Long preflightCacheSeconds) {
 	}
 }

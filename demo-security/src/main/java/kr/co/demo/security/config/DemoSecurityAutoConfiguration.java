@@ -148,8 +148,8 @@ public class DemoSecurityAutoConfiguration {
 			if (cors.allowCredentials() != null) {
 				config.setAllowCredentials(cors.allowCredentials());
 			}
-			if (cors.maxAge() != null) {
-				config.setMaxAge(cors.maxAge());
+			if (cors.preflightCacheSeconds() != null) {
+				config.setMaxAge(cors.preflightCacheSeconds());
 			}
 		}
 
