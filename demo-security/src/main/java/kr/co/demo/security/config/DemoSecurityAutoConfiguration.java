@@ -1,35 +1,82 @@
 package kr.co.demo.security.config;
 
+import java.util.List;
 import kr.co.demo.security.filter.JwtAuthenticationEntryPoint;
 import kr.co.demo.security.filter.JwtAuthenticationFilter;
 import kr.co.demo.security.jwt.JwtTokenProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /**
  * 보안 자동 설정.
  *
- * <p>{@code jwt.secret} 프로퍼티가 있으면 JWT 인증을 활성화합니다.
+ * <p>모든 빈은 {@code @ConditionalOnMissingBean} — 소비자가 같은 타입 빈을
+ * 정의하면 라이브러리 기본값은 비활성화됩니다.
+ *
+ * <h2>커스터마이징 단계</h2>
+ *
+ * <h3>1단계: 설정만 변경 (application.yml)</h3>
+ * <pre>{@code
+ * jwt:
+ *   secret: my-key
+ * security:
+ *   public-urls: ["/public/**"]
+ *   cors-urls: ["http://myapp.com"]
+ * }</pre>
+ *
+ * <h3>2단계: 부분 확장 (Customizer 빈)</h3>
+ * <pre>{@code
+ * @Bean
+ * public DemoSecurityCustomizer myCustomizer() {
+ *     return http -> http.authorizeHttpRequests(auth -> auth
+ *         .requestMatchers("/admin/**").hasRole("ADMIN"));
+ * }
+ * }</pre>
+ *
+ * <h3>3단계: 개별 빈 교체</h3>
+ * <pre>{@code
+ * @Bean // BCrypt 대신 Argon2
+ * public PasswordEncoder passwordEncoder() {
+ *     return new Argon2PasswordEncoder(...);
+ * }
+ * }</pre>
+ *
+ * <h3>4단계: 완전 오버라이드</h3>
+ * <pre>{@code
+ * @Bean // 라이브러리 SecurityFilterChain 비활성화
+ * public SecurityFilterChain myFilterChain(HttpSecurity http) {
+ *     // 처음부터 직접 구성
+ * }
+ * }</pre>
  *
  * @author demo-framework
  * @since 1.1.0
  */
 @AutoConfiguration
-@ConditionalOnClass(name = "org.springframework.security.config.annotation.web.configuration.EnableWebSecurity")
+@ConditionalOnClass(name =
+		"org.springframework.security.config.annotation.web.configuration.EnableWebSecurity")
 @EnableConfigurationProperties({JwtProperties.class, SecurityProperties.class})
 public class DemoSecurityAutoConfiguration {
 
+	// ==================== JWT ====================
+
 	/**
-	 * JwtTokenProvider 빈.
-	 *
-	 * @param properties JWT 설정
-	 * @return JwtTokenProvider
+	 * JWT 토큰 제공자.
 	 */
 	@Bean
 	@ConditionalOnMissingBean
@@ -39,10 +86,7 @@ public class DemoSecurityAutoConfiguration {
 	}
 
 	/**
-	 * JwtAuthenticationFilter 빈.
-	 *
-	 * @param provider JwtTokenProvider
-	 * @return JwtAuthenticationFilter
+	 * JWT 인증 필터.
 	 */
 	@Bean
 	@ConditionalOnMissingBean
@@ -52,9 +96,7 @@ public class DemoSecurityAutoConfiguration {
 	}
 
 	/**
-	 * JwtAuthenticationEntryPoint 빈.
-	 *
-	 * @return JwtAuthenticationEntryPoint
+	 * JWT 인증 실패 핸들러 (401 응답).
 	 */
 	@Bean
 	@ConditionalOnMissingBean
@@ -62,14 +104,112 @@ public class DemoSecurityAutoConfiguration {
 		return new JwtAuthenticationEntryPoint();
 	}
 
+	// ==================== 공통 ====================
+
 	/**
-	 * PasswordEncoder 빈 (BCrypt).
-	 *
-	 * @return PasswordEncoder
+	 * 비밀번호 인코더 (기본: BCrypt).
 	 */
 	@Bean
 	@ConditionalOnMissingBean
 	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder();
+	}
+
+	// ==================== CORS ====================
+
+	/**
+	 * CORS 설정.
+	 *
+	 * <p>{@link DemoCorsCustomizer} 빈으로 추가 설정 가능.
+	 * 완전 교체: {@code CorsConfigurationSource} 빈 직접 정의.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public CorsConfigurationSource corsConfigurationSource(
+			SecurityProperties properties,
+			ObjectProvider<DemoCorsCustomizer> customizers) {
+
+		CorsConfiguration config = new CorsConfiguration();
+
+		List<String> origins = properties.corsUrls();
+		if (origins != null && !origins.isEmpty()) {
+			config.setAllowedOrigins(origins);
+		} else {
+			config.setAllowedOrigins(List.of(
+					"http://localhost:3000",
+					"http://localhost:5173",
+					"http://localhost:8080"));
+		}
+
+		config.setAllowedMethods(List.of(
+				"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
+		config.setAllowedHeaders(List.of(
+				"Authorization", "Content-Type", "X-Requested-With"));
+		config.setAllowCredentials(true);
+		config.setMaxAge(3600L);
+
+		customizers.orderedStream().forEach(c -> c.customize(config));
+
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		source.registerCorsConfiguration("/**", config);
+		return source;
+	}
+
+	// ==================== SecurityFilterChain ====================
+
+	/**
+	 * 기본 SecurityFilterChain.
+	 *
+	 * <p>기본 동작:
+	 * <ul>
+	 *   <li>CSRF 비활성화</li>
+	 *   <li>CORS 활성화</li>
+	 *   <li>Stateless 세션</li>
+	 *   <li>{@code security.public-urls} 인증 면제</li>
+	 *   <li>나머지 인증 필요</li>
+	 *   <li>JWT 필터 자동 등록 (jwt.secret 설정 시)</li>
+	 * </ul>
+	 *
+	 * <p>{@link DemoSecurityCustomizer}로 부분 확장 가능.
+	 * 직접 {@code SecurityFilterChain} 빈을 정의하면 이 기본값은 비활성화.
+	 */
+	@Bean
+	@ConditionalOnMissingBean
+	public SecurityFilterChain demoSecurityFilterChain(
+			HttpSecurity http,
+			SecurityProperties properties,
+			CorsConfigurationSource corsSource,
+			JwtAuthenticationEntryPoint entryPoint,
+			ObjectProvider<JwtAuthenticationFilter> jwtFilter,
+			ObjectProvider<DemoSecurityCustomizer> customizers) throws Exception {
+
+		http
+				.csrf(AbstractHttpConfigurer::disable)
+				.cors(cors -> cors.configurationSource(corsSource))
+				.sessionManagement(session ->
+						session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint));
+
+		String[] publicUrls = properties.publicUrls() != null
+				? properties.publicUrls().toArray(new String[0])
+				: new String[0];
+
+		http.authorizeHttpRequests(auth -> {
+			if (publicUrls.length > 0) {
+				auth.requestMatchers(publicUrls).permitAll();
+			}
+			auth.anyRequest().authenticated();
+		});
+
+		jwtFilter.ifAvailable(filter ->
+				http.addFilterBefore(filter,
+						UsernamePasswordAuthenticationFilter.class));
+
+		for (DemoSecurityCustomizer customizer :
+				customizers.orderedStream().toList()) {
+			customizer.customize(http);
+		}
+
+		return http.build();
 	}
 }
