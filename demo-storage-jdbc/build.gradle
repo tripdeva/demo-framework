@@ -1,0 +1,7 @@
+// demo-storage-jdbc: JDBC 어댑터 (구현 예정)
+
+dependencies {
+    implementation project(':demo-core')
+
+    api 'org.springframework.boot:spring-boot-starter-data-jdbc'
+}

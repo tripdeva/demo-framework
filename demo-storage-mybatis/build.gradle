@@ -1,0 +1,19 @@
+// demo-storage-mybatis: MyBatis 어댑터 + Patch/Upsert SQL 생성
+
+dependencies {
+    implementation project(':demo-core')
+
+    // MyBatis Spring Boot Starter
+    api "org.mybatis.spring.boot:mybatis-spring-boot-starter:${mybatisStarterVersion}"
+
+    // Spring Boot Configuration Processor
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+
+    // ==================== Test ====================
+
+    // Storage MyBatis Processor (BaseMapper 자동 생성)
+    testAnnotationProcessor project(':demo-storage-mybatis-processor')
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.h2database:h2'
+}

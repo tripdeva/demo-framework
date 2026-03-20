@@ -1,0 +1,83 @@
+plugins {
+    id 'java-library' apply false
+    id 'org.springframework.boot' version "${springBootVersion}" apply false
+    id 'io.spring.dependency-management' version "${dependencyManagementVersion}" apply false
+    id 'maven-publish' apply false
+}
+
+// .env 파일 탐색 (상위 디렉토리까지)
+def envProps = new Properties()
+def dir = rootDir
+while (dir != null) {
+    def envFile = new File(dir, '.env')
+    if (envFile.exists()) {
+        envFile.withInputStream { envProps.load(it) }
+        break
+    }
+    dir = dir.parentFile
+}
+ext.envProps = envProps
+
+subprojects {
+    apply plugin: 'java-library'
+
+    group = rootProject.group
+    version = rootProject.version
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(17)
+        }
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        testImplementation platform('org.junit:junit-bom:5.10.0')
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+    }
+}
+
+// Spring Boot BOM을 사용하는 모듈 공통 설정
+configure(subprojects.findAll { it.name != 'demo-core' && !it.name.endsWith('-processor') }) {
+    apply plugin: 'io.spring.dependency-management'
+
+    dependencyManagement {
+        imports {
+            mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+        }
+    }
+}
+
+// GitHub Packages 배포 설정
+subprojects {
+    apply plugin: 'maven-publish'
+
+    publishing {
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/tripdeva/demo-framework")
+                credentials {
+                    username = System.getenv("GITHUB_USER") ?: rootProject.ext.envProps.getProperty("GITHUB_USER") ?: project.findProperty("gpr.user")
+                    password = System.getenv("GITHUB_TOKEN") ?: rootProject.ext.envProps.getProperty("GITHUB_TOKEN") ?: project.findProperty("gpr.key")
+                }
+            }
+        }
+        publications {
+            gpr(MavenPublication) {
+                from components.java
+                groupId = project.group
+                artifactId = project.name
+                version = project.version
+            }
+        }
+    }
+}

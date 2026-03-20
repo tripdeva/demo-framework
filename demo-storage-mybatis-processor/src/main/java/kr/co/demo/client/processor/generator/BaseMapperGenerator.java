@@ -1,0 +1,381 @@
+package kr.co.demo.client.processor.generator;
+
+import com.squareup.javapoet.*;
+import kr.co.demo.core.storage.annotation.*;
+import kr.co.demo.client.processor.util.NamingUtils;
+
+import javax.annotation.processing.Filer;
+import javax.lang.model.element.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * MyBatis Base Mapper 인터페이스 생성기
+ *
+ * <p>도메인 객체의 Storage 어노테이션을 분석하여
+ * 기본 CRUD 메서드가 포함된 MyBatis Mapper 인터페이스를 자동 생성합니다.
+ *
+ * <h2>생성되는 메서드</h2>
+ * <ul>
+ *     <li>{@code findById(ID)} - ID로 조회</li>
+ *     <li>{@code findAll()} - 전체 조회</li>
+ *     <li>{@code insert(D)} - 삽입</li>
+ *     <li>{@code update(D)} - 수정</li>
+ *     <li>{@code deleteById(ID)} - ID로 삭제</li>
+ *     <li>{@code count()} - 개수 조회</li>
+ *     <li>{@code existsById(ID)} - 존재 여부 확인</li>
+ * </ul>
+ *
+ * <h2>생성 예시</h2>
+ * <pre>{@code
+ * // 입력: Order.java
+ * @StorageTable("orders")
+ * public class Order {
+ *     @StorageId
+ *     private Long id;
+ *     @StorageColumn(value = "order_no", nullable = false)
+ *     private String orderNumber;
+ * }
+ *
+ * // 출력: OrderBaseMapper.java
+ * @Mapper
+ * public interface OrderBaseMapper {
+ *     @Select("SELECT id, order_no AS orderNumber FROM orders WHERE id = #{id}")
+ *     Order findById(Long id);
+ *     // ...
+ * }
+ * }</pre>
+ *
+ * @author demo-framework
+ * @since 1.0.0
+ */
+public class BaseMapperGenerator {
+
+    private final Filer filer;
+
+    public BaseMapperGenerator(Filer filer) {
+        this.filer = filer;
+    }
+
+    /**
+     * 도메인 클래스로부터 MyBatis Base Mapper를 생성합니다.
+     */
+    public void generate(TypeElement domainClass, String packageName) throws IOException {
+        String domainClassName = domainClass.getSimpleName().toString();
+        String mapperClassName = domainClassName + "BaseMapper";
+
+        // 테이블명 추출
+        StorageTable storageTable = domainClass.getAnnotation(StorageTable.class);
+        String tableName = storageTable.value().isEmpty()
+                ? NamingUtils.toSnakeCase(domainClassName)
+                : storageTable.value();
+
+        // 필드 정보 수집
+        List<FieldInfo> fields = collectFields(domainClass);
+        FieldInfo idField = fields.stream()
+                .filter(f -> f.isId)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("@StorageId 필드가 없습니다: " + domainClassName));
+
+        ClassName domainType = ClassName.get(packageName, domainClassName);
+        TypeName idType = idField.typeName.box();
+
+        // Mapper 인터페이스 생성
+        TypeSpec.Builder mapperBuilder = TypeSpec.interfaceBuilder(mapperClassName)
+                .addModifiers(Modifier.PUBLIC)
+                .addAnnotation(ClassName.get("org.apache.ibatis.annotations", "Mapper"));
+
+        // 메서드 추가
+        mapperBuilder.addMethod(generateFindById(domainType, idType, tableName, fields, idField));
+        mapperBuilder.addMethod(generateFindAll(domainType, tableName, fields));
+        mapperBuilder.addMethod(generateInsert(domainType, tableName, fields, idField));
+        mapperBuilder.addMethod(generateUpdate(domainType, tableName, fields, idField));
+        mapperBuilder.addMethod(generatePatch(domainType));
+        mapperBuilder.addMethod(generateUpsert(domainType));
+        mapperBuilder.addMethod(generateDeleteById(idType, tableName, idField));
+        mapperBuilder.addMethod(generateCount(tableName));
+        mapperBuilder.addMethod(generateExistsById(idType, tableName, idField));
+
+        // Java 파일 생성
+        JavaFile javaFile = JavaFile.builder(packageName + ".mapper", mapperBuilder.build())
+                .build();
+        javaFile.writeTo(filer);
+    }
+
+    /**
+     * 필드 정보를 수집합니다.
+     */
+    private List<FieldInfo> collectFields(TypeElement domainClass) {
+        List<FieldInfo> fields = new ArrayList<>();
+
+        for (Element enclosed : domainClass.getEnclosedElements()) {
+            if (enclosed.getKind() != ElementKind.FIELD) continue;
+
+            VariableElement field = (VariableElement) enclosed;
+
+            // @StorageTransient 제외
+            if (field.getAnnotation(StorageTransient.class) != null) continue;
+
+            // @StorageRelation 제외
+            if (field.getAnnotation(StorageRelation.class) != null) continue;
+
+            FieldInfo info = new FieldInfo();
+            info.fieldName = field.getSimpleName().toString();
+            info.typeName = TypeName.get(field.asType());
+            info.isId = field.getAnnotation(StorageId.class) != null;
+
+            // 컬럼명 결정
+            StorageColumn storageColumn = field.getAnnotation(StorageColumn.class);
+            if (storageColumn != null && !storageColumn.value().isEmpty()) {
+                info.columnName = storageColumn.value();
+            } else {
+                info.columnName = NamingUtils.toSnakeCase(info.fieldName);
+            }
+
+            // ID 필드의 자동 생성 여부
+            if (info.isId) {
+                StorageId storageId = field.getAnnotation(StorageId.class);
+                info.autoGenerated = storageId.autoGenerated();
+            }
+
+            fields.add(info);
+        }
+
+        return fields;
+    }
+
+    /**
+     * findById 메서드 생성
+     */
+    private MethodSpec generateFindById(ClassName domainType, TypeName idType,
+                                        String tableName, List<FieldInfo> fields, FieldInfo idField) {
+        String selectColumns = buildSelectColumns(fields);
+        String sql = String.format("SELECT %s FROM %s WHERE %s = #{id}",
+                selectColumns, tableName, idField.columnName);
+
+        return MethodSpec.methodBuilder("findById")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Select"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .addParameter(idType, "id")
+                .returns(domainType)
+                .build();
+    }
+
+    /**
+     * findAll 메서드 생성
+     */
+    private MethodSpec generateFindAll(ClassName domainType, String tableName, List<FieldInfo> fields) {
+        String selectColumns = buildSelectColumns(fields);
+        String sql = String.format("SELECT %s FROM %s", selectColumns, tableName);
+
+        return MethodSpec.methodBuilder("findAll")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Select"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .returns(ParameterizedTypeName.get(ClassName.get(List.class), domainType))
+                .build();
+    }
+
+    /**
+     * insert 메서드 생성
+     */
+    private MethodSpec generateInsert(ClassName domainType, String tableName,
+                                      List<FieldInfo> fields, FieldInfo idField) {
+        // ID가 자동 생성이면 INSERT에서 제외
+        List<FieldInfo> insertFields = fields.stream()
+                .filter(f -> !f.isId || !f.autoGenerated)
+                .toList();
+
+        String columns = insertFields.stream()
+                .map(f -> f.columnName)
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+
+        String values = insertFields.stream()
+                .map(f -> "#{" + f.fieldName + "}")
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+
+        String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", tableName, columns, values);
+
+        MethodSpec.Builder builder = MethodSpec.methodBuilder("insert")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Insert"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .addParameter(domainType, "domain")
+                .returns(TypeName.INT);
+
+        // 자동 생성 키 옵션 추가
+        if (idField.autoGenerated) {
+            builder.addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Options"))
+                    .addMember("useGeneratedKeys", "$L", true)
+                    .addMember("keyProperty", "$S", idField.fieldName)
+                    .addMember("keyColumn", "$S", idField.columnName)
+                    .build());
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * update 메서드 생성
+     */
+    private MethodSpec generateUpdate(ClassName domainType, String tableName,
+                                      List<FieldInfo> fields, FieldInfo idField) {
+        // ID 필드 제외한 SET 절 생성
+        String setClause = fields.stream()
+                .filter(f -> !f.isId)
+                .map(f -> f.columnName + " = #{" + f.fieldName + "}")
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("");
+
+        String sql = String.format("UPDATE %s SET %s WHERE %s = #{%s}",
+                tableName, setClause, idField.columnName, idField.fieldName);
+
+        return MethodSpec.methodBuilder("update")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Update"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .addParameter(domainType, "domain")
+                .returns(TypeName.INT)
+                .build();
+    }
+
+    /**
+     * patch 메서드 생성
+     */
+    private MethodSpec generatePatch(ClassName domainType) {
+
+        // Patch<Order>
+        ParameterizedTypeName patchType =
+                ParameterizedTypeName.get(
+                        ClassName.get("kr.co.demo.client.mybatis.util", "Patch"),
+                        domainType
+                );
+
+        return MethodSpec.methodBuilder("patch")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                // @Patch
+                .addAnnotation(ClassName.get("kr.co.demo.core.storage.annotation", "Patch"))
+                // @UpdateProvider(type = PatchSqlProvider.class, method = "build")
+                .addAnnotation(
+                        AnnotationSpec.builder(
+                                        ClassName.get("org.apache.ibatis.annotations", "UpdateProvider")
+                                )
+                                .addMember(
+                                        "type",
+                                        "$T.class",
+                                        ClassName.get("kr.co.demo.client.mybatis.util", "PatchSqlProvider")
+                                )
+                                .addMember(
+                                        "method",
+                                        "$S",
+                                        "build"
+                                )
+                                .build()
+                )
+                .addParameter(patchType, "patch")
+                .returns(TypeName.INT)
+                .build();
+    }
+
+    private MethodSpec generateUpsert(ClassName domainType) {
+        return MethodSpec.methodBuilder("save")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(
+                        AnnotationSpec.builder(
+                                        ClassName.get("org.apache.ibatis.annotations", "InsertProvider")
+                                )
+                                .addMember("type", "$T.class",
+                                        ClassName.get("kr.co.demo.client.mybatis.util", "UpsertSqlProvider"))
+                                .addMember("method", "$S", "build")
+                                .build()
+                )
+                .addParameter(domainType, "domain")
+                .returns(TypeName.INT)
+                .build();
+    }
+
+
+
+    /**
+     * deleteById 메서드 생성
+     */
+    private MethodSpec generateDeleteById(TypeName idType, String tableName, FieldInfo idField) {
+        String sql = String.format("DELETE FROM %s WHERE %s = #{id}", tableName, idField.columnName);
+
+        return MethodSpec.methodBuilder("deleteById")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Delete"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .addParameter(idType, "id")
+                .returns(TypeName.INT)
+                .build();
+    }
+
+    /**
+     * count 메서드 생성
+     */
+    private MethodSpec generateCount(String tableName) {
+        String sql = String.format("SELECT COUNT(*) FROM %s", tableName);
+
+        return MethodSpec.methodBuilder("count")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Select"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .returns(TypeName.LONG)
+                .build();
+    }
+
+    /**
+     * existsById 메서드 생성
+     */
+    private MethodSpec generateExistsById(TypeName idType, String tableName, FieldInfo idField) {
+        String sql = String.format("SELECT COUNT(*) > 0 FROM %s WHERE %s = #{id}",
+                tableName, idField.columnName);
+
+        return MethodSpec.methodBuilder("existsById")
+                .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                .addAnnotation(AnnotationSpec.builder(ClassName.get("org.apache.ibatis.annotations", "Select"))
+                        .addMember("value", "$S", sql)
+                        .build())
+                .addParameter(idType, "id")
+                .returns(TypeName.BOOLEAN)
+                .build();
+    }
+
+    /**
+     * SELECT 절의 컬럼 목록 생성 (컬럼명 AS 필드명 형태)
+     */
+    private String buildSelectColumns(List<FieldInfo> fields) {
+        return fields.stream()
+                .map(f -> {
+                    if (f.columnName.equals(f.fieldName)) {
+                        return f.columnName;
+                    } else {
+                        return f.columnName + " AS " + f.fieldName;
+                    }
+                })
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("*");
+    }
+
+    /**
+     * 필드 정보 클래스
+     */
+    private static class FieldInfo {
+        String fieldName;
+        String columnName;
+        TypeName typeName;
+        boolean isId;
+        boolean autoGenerated;
+    }
+}

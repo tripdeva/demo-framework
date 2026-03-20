@@ -1,0 +1,9 @@
+rootProject.name = 'demo-framework'
+
+include 'demo-core'
+include 'demo-spring-boot-starter'
+include 'demo-storage-jpa'
+include 'demo-storage-jpa-processor'
+include 'demo-storage-mybatis'
+include 'demo-storage-mybatis-processor'
+include 'demo-storage-jdbc'
