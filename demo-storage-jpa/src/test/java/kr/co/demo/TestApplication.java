@@ -1,6 +1,7 @@
 package kr.co.demo;
 
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 /**
@@ -8,5 +9,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  */
 @SpringBootApplication
 @EnableJpaRepositories(basePackages = "kr.co.demo.domain.repository")
+@EnableJpaAuditing
 public class TestApplication {
 }

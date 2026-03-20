@@ -127,6 +127,41 @@ class SchemaValidationTest {
 	}
 
 	@Nested
+	@DisplayName("@StorageIndex 검증")
+	class IndexValidation {
+
+		@Test
+		@DisplayName("idx_status 인덱스가 DB에 생성됨")
+		void statusIndexExists() throws Exception {
+			try (Connection conn = dataSource.getConnection()) {
+				DatabaseMetaData meta = conn.getMetaData();
+				ResultSet indexes = meta.getIndexInfo(null, null, "ORDERS", false, false);
+				List<String> indexNames = new ArrayList<>();
+				while (indexes.next()) {
+					String name = indexes.getString("INDEX_NAME");
+					if (name != null) indexNames.add(name.toUpperCase());
+				}
+				assertThat(indexNames).anyMatch(n -> n.contains("IDX_STATUS"));
+			}
+		}
+
+		@Test
+		@DisplayName("idx_customer_status UNIQUE 인덱스가 DB에 생성됨")
+		void uniqueIndexExists() throws Exception {
+			try (Connection conn = dataSource.getConnection()) {
+				DatabaseMetaData meta = conn.getMetaData();
+				ResultSet indexes = meta.getIndexInfo(null, null, "ORDERS", true, false);
+				List<String> uniqueIndexNames = new ArrayList<>();
+				while (indexes.next()) {
+					String name = indexes.getString("INDEX_NAME");
+					if (name != null) uniqueIndexNames.add(name.toUpperCase());
+				}
+				assertThat(uniqueIndexNames).anyMatch(n -> n.contains("IDX_CUSTOMER_STATUS"));
+			}
+		}
+	}
+
+	@Nested
 	@DisplayName("nullable/unique 제약조건 검증")
 	class ConstraintValidation {
 
@@ -312,6 +347,80 @@ class SchemaValidationTest {
 			assertThat(found).isNotNull();
 			assertThat(found.getOrder()).isNotNull();
 			assertThat(found.getOrder().getOrderNumber()).isEqualTo("REL-002");
+		}
+	}
+
+	@Nested
+	@DisplayName("@StorageVersion 검증")
+	class VersionValidation {
+
+		@Test
+		@DisplayName("version 컬럼이 DB에 존재")
+		void versionColumnExists() throws Exception {
+			try (Connection conn = dataSource.getConnection()) {
+				DatabaseMetaData meta = conn.getMetaData();
+				ResultSet cols = meta.getColumns(null, null, "ORDERS", "VERSION");
+				assertThat(cols.next()).isTrue();
+			}
+		}
+
+		@Test
+		@DisplayName("최초 저장 시 version = 0")
+		void initialVersion() {
+			OrderEntity saved = orderRepo.save(
+					createEntity("VER-001", "Kim", OrderStatus.PENDING));
+			orderRepo.flush();
+			assertThat(saved.getVersion()).isEqualTo(0L);
+		}
+
+		@Test
+		@DisplayName("수정 시 version 자동 증가")
+		void versionIncrement() {
+			OrderEntity saved = orderRepo.save(
+					createEntity("VER-002", "Lee", OrderStatus.PENDING));
+			orderRepo.flush();
+			Long v0 = saved.getVersion();
+
+			saved.setCustomerName("Modified");
+			orderRepo.flush();
+			assertThat(saved.getVersion()).isGreaterThan(v0);
+		}
+	}
+
+	@Nested
+	@DisplayName("Auditing 검증")
+	class AuditingValidation {
+
+		@Test
+		@DisplayName("createdAt 자동 설정됨")
+		void createdAtAutoSet() {
+			OrderEntity saved = orderRepo.save(
+					createEntity("AUD-001", "Kim", OrderStatus.PENDING));
+			orderRepo.flush();
+			assertThat(saved.getCreatedAt()).isNotNull();
+		}
+
+		@Test
+		@DisplayName("updatedAt 자동 설정됨")
+		void updatedAtAutoSet() {
+			OrderEntity saved = orderRepo.save(
+					createEntity("AUD-002", "Lee", OrderStatus.PENDING));
+			orderRepo.flush();
+			assertThat(saved.getUpdatedAt()).isNotNull();
+		}
+
+		@Test
+		@DisplayName("createdAt/updatedAt 컬럼 존재")
+		void auditColumnsExist() throws Exception {
+			List<String> columns = new ArrayList<>();
+			try (Connection conn = dataSource.getConnection()) {
+				DatabaseMetaData meta = conn.getMetaData();
+				ResultSet cols = meta.getColumns(null, null, "ORDERS", null);
+				while (cols.next()) {
+					columns.add(cols.getString("COLUMN_NAME"));
+				}
+			}
+			assertThat(columns).contains("CREATED_AT", "UPDATED_AT");
 		}
 	}
 

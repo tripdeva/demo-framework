@@ -1,7 +1,9 @@
 package kr.co.demo.domain;
 
 import kr.co.demo.core.storage.annotation.*;
+import kr.co.demo.core.storage.enums.CascadeType;
 import kr.co.demo.core.storage.enums.EnumType;
+import kr.co.demo.core.storage.enums.FetchType;
 import kr.co.demo.core.storage.enums.RelationType;
 
 import java.math.BigDecimal;
@@ -20,6 +22,8 @@ import java.util.List;
  * </ul>
  */
 @StorageTable("orders")
+@StorageIndex(name = "idx_status", columns = {"status"})
+@StorageIndex(name = "idx_customer_status", columns = {"customer_name", "status"}, unique = true)
 public class Order {
 
     @StorageId
@@ -39,8 +43,18 @@ public class Order {
 
     private LocalDateTime orderedAt;
 
-    @StorageRelation(type = RelationType.ONE_TO_MANY, mappedBy = "order")
+    @StorageRelation(type = RelationType.ONE_TO_MANY, mappedBy = "order",
+            cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<OrderItem> items;
+
+    @StorageVersion
+    private Long version;
+
+    @StorageCreatedAt
+    private LocalDateTime createdAt;
+
+    @StorageUpdatedAt
+    private LocalDateTime updatedAt;
 
     @StorageTransient
     private String tempCalculation;
@@ -101,6 +115,30 @@ public class Order {
 
     public void setItems(List<OrderItem> items) {
         this.items = items;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     public String getTempCalculation() {

@@ -3,7 +3,9 @@ package kr.co.demo.client.jpa.processor.generator;
 import com.squareup.javapoet.*;
 import kr.co.demo.core.storage.annotation.*;
 import kr.co.demo.client.jpa.processor.util.NamingUtils;
+import kr.co.demo.core.storage.enums.CascadeType;
 import kr.co.demo.core.storage.enums.EnumType;
+import kr.co.demo.core.storage.enums.FetchType;
 import kr.co.demo.core.storage.enums.RelationType;
 
 import javax.annotation.processing.Filer;
@@ -87,13 +89,48 @@ public class EntityGenerator {
 				? NamingUtils.toSnakeCase(domainClassName)
 				: storageTable.value();
 
+		// @Table 어노테이션 빌드 (indexes 포함)
+		AnnotationSpec.Builder tableAnnotation = AnnotationSpec.builder(
+						ClassName.get("jakarta.persistence", "Table"))
+				.addMember("name", "$S", tableName);
+
+		// @StorageIndex → @Table(indexes = {...})
+		StorageIndex[] indexes = domainClass.getAnnotationsByType(StorageIndex.class);
+		if (indexes.length > 0) {
+			for (StorageIndex idx : indexes) {
+				String idxName = idx.name().isEmpty()
+						? "idx_" + tableName + "_" + String.join("_", idx.columns())
+						: idx.name();
+				String columnList = String.join(", ", idx.columns());
+				AnnotationSpec indexAnnotation = AnnotationSpec.builder(
+								ClassName.get("jakarta.persistence", "Index"))
+						.addMember("name", "$S", idxName)
+						.addMember("columnList", "$S", columnList)
+						.addMember("unique", "$L", idx.unique())
+						.build();
+				tableAnnotation.addMember("indexes", "$L", indexAnnotation);
+			}
+		}
+
+		// Auditing 어노테이션 필요 여부 확인
+		boolean hasAuditing = domainClass.getEnclosedElements().stream()
+				.anyMatch(e -> e.getAnnotation(StorageCreatedAt.class) != null
+						|| e.getAnnotation(StorageUpdatedAt.class) != null);
+
 		// Entity 클래스 빌더 생성
 		TypeSpec.Builder entityBuilder = TypeSpec.classBuilder(entityClassName)
 				.addModifiers(Modifier.PUBLIC)
 				.addAnnotation(ClassName.get("jakarta.persistence", "Entity"))
-				.addAnnotation(AnnotationSpec.builder(ClassName.get("jakarta.persistence", "Table"))
-						.addMember("name", "$S", tableName)
-						.build());
+				.addAnnotation(tableAnnotation.build());
+
+		if (hasAuditing) {
+			entityBuilder.addAnnotation(AnnotationSpec.builder(
+							ClassName.get("jakarta.persistence", "EntityListeners"))
+					.addMember("value", "$T.class",
+							ClassName.get("org.springframework.data.jpa.domain.support",
+									"AuditingEntityListener"))
+					.build());
+		}
 
 		// 도메인 클래스의 필드 순회
 		for (Element enclosed : domainClass.getEnclosedElements()) {
@@ -153,6 +190,40 @@ public class EntityGenerator {
 								ClassName.get("jakarta.persistence", "GenerationType"))
 						.build());
 			}
+			return fieldBuilder.build();
+		}
+
+		// @StorageCreatedAt → @CreatedDate + @Column(updatable = false)
+		StorageCreatedAt createdAt = field.getAnnotation(StorageCreatedAt.class);
+		if (createdAt != null) {
+			String colName = NamingUtils.toSnakeCase(fieldName);
+			fieldBuilder.addAnnotation(ClassName.get(
+					"org.springframework.data.annotation", "CreatedDate"));
+			fieldBuilder.addAnnotation(AnnotationSpec.builder(
+							ClassName.get("jakarta.persistence", "Column"))
+					.addMember("name", "$S", colName)
+					.addMember("updatable", "$L", false)
+					.build());
+			return fieldBuilder.build();
+		}
+
+		// @StorageUpdatedAt → @LastModifiedDate
+		StorageUpdatedAt updatedAt = field.getAnnotation(StorageUpdatedAt.class);
+		if (updatedAt != null) {
+			String colName = NamingUtils.toSnakeCase(fieldName);
+			fieldBuilder.addAnnotation(ClassName.get(
+					"org.springframework.data.annotation", "LastModifiedDate"));
+			fieldBuilder.addAnnotation(AnnotationSpec.builder(
+							ClassName.get("jakarta.persistence", "Column"))
+					.addMember("name", "$S", colName)
+					.build());
+			return fieldBuilder.build();
+		}
+
+		// @StorageVersion → @Version
+		StorageVersion storageVersion = field.getAnnotation(StorageVersion.class);
+		if (storageVersion != null) {
+			fieldBuilder.addAnnotation(ClassName.get("jakarta.persistence", "Version"));
 			return fieldBuilder.build();
 		}
 
@@ -277,6 +348,32 @@ public class EntityGenerator {
 		// 양방향 관계의 mappedBy 처리
 		if (!relation.mappedBy().isEmpty()) {
 			builder.addMember("mappedBy", "$S", relation.mappedBy());
+		}
+
+		// cascade 처리
+		CascadeType[] cascades = relation.cascade();
+		if (cascades.length > 0) {
+			ClassName jpaCascade = ClassName.get("jakarta.persistence", "CascadeType");
+			if (cascades.length == 1) {
+				builder.addMember("cascade", "$T.$L", jpaCascade, cascades[0].name());
+			} else {
+				StringBuilder cascadeCode = new StringBuilder("{");
+				for (int i = 0; i < cascades.length; i++) {
+					if (i > 0) cascadeCode.append(", ");
+					cascadeCode.append("$T.").append(cascades[i].name());
+				}
+				cascadeCode.append("}");
+				Object[] args = new Object[cascades.length];
+				java.util.Arrays.fill(args, jpaCascade);
+				builder.addMember("cascade", cascadeCode.toString(), args);
+			}
+		}
+
+		// fetch 처리
+		FetchType fetch = relation.fetch();
+		if (fetch != FetchType.DEFAULT) {
+			builder.addMember("fetch", "$T.$L",
+					ClassName.get("jakarta.persistence", "FetchType"), fetch.name());
 		}
 
 		fieldBuilder.addAnnotation(builder.build());

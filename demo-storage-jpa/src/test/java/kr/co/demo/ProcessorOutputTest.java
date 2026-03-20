@@ -120,10 +120,74 @@ class ProcessorOutputTest {
 		}
 
 		@Test
+		@DisplayName("@StorageIndex → @Table(indexes) 생성됨")
+		void indexAnnotation() {
+			Table table = OrderEntity.class.getAnnotation(Table.class);
+			assertThat(table.indexes()).hasSize(2);
+
+			jakarta.persistence.Index idx0 = table.indexes()[0];
+			assertThat(idx0.name()).isEqualTo("idx_status");
+			assertThat(idx0.columnList()).isEqualTo("status");
+			assertThat(idx0.unique()).isFalse();
+
+			jakarta.persistence.Index idx1 = table.indexes()[1];
+			assertThat(idx1.name()).isEqualTo("idx_customer_status");
+			assertThat(idx1.columnList()).isEqualTo("customer_name, status");
+			assertThat(idx1.unique()).isTrue();
+		}
+
+		@Test
 		@DisplayName("Entity에 기본 생성자 존재")
 		void noArgConstructor() throws Exception {
 			OrderEntity instance = OrderEntity.class.getDeclaredConstructor().newInstance();
 			assertThat(instance).isNotNull();
+		}
+
+		@Test
+		@DisplayName("@StorageVersion → @Version 생성됨")
+		void versionAnnotation() throws Exception {
+			Field f = OrderEntity.class.getDeclaredField("version");
+			assertThat(f.isAnnotationPresent(
+					jakarta.persistence.Version.class)).isTrue();
+		}
+
+		@Test
+		@DisplayName("@StorageCreatedAt → @CreatedDate + @Column(updatable=false)")
+		void createdAtAnnotation() throws Exception {
+			Field f = OrderEntity.class.getDeclaredField("createdAt");
+			assertThat(f.isAnnotationPresent(
+					org.springframework.data.annotation.CreatedDate.class)).isTrue();
+			Column col = f.getAnnotation(Column.class);
+			assertThat(col).isNotNull();
+			assertThat(col.updatable()).isFalse();
+		}
+
+		@Test
+		@DisplayName("@StorageUpdatedAt → @LastModifiedDate")
+		void updatedAtAnnotation() throws Exception {
+			Field f = OrderEntity.class.getDeclaredField("updatedAt");
+			assertThat(f.isAnnotationPresent(
+					org.springframework.data.annotation.LastModifiedDate.class)).isTrue();
+		}
+
+		@Test
+		@DisplayName("@EntityListeners(AuditingEntityListener) 존재")
+		void entityListenersAnnotation() {
+			jakarta.persistence.EntityListeners listeners =
+					OrderEntity.class.getAnnotation(jakarta.persistence.EntityListeners.class);
+			assertThat(listeners).isNotNull();
+			assertThat(listeners.value()).hasSize(1);
+			assertThat(listeners.value()[0].getSimpleName())
+					.isEqualTo("AuditingEntityListener");
+		}
+
+		@Test
+		@DisplayName("cascade=ALL, fetch=LAZY 관계 어노테이션")
+		void cascadeFetchAnnotation() throws Exception {
+			Field f = OrderEntity.class.getDeclaredField("items");
+			OneToMany otm = f.getAnnotation(OneToMany.class);
+			assertThat(otm.cascade()).contains(jakarta.persistence.CascadeType.ALL);
+			assertThat(otm.fetch()).isEqualTo(jakarta.persistence.FetchType.LAZY);
 		}
 
 		@Test

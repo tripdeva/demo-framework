@@ -74,6 +74,7 @@ class ManualJpaAdapterTest {
 			e.setStatus(d.getStatus());
 			e.setTotalAmount(d.getTotalAmount());
 			e.setOrderedAt(d.getOrderedAt());
+			e.setVersion(d.getVersion());
 			return e;
 		};
 
@@ -85,6 +86,7 @@ class ManualJpaAdapterTest {
 			d.setStatus(e.getStatus());
 			d.setTotalAmount(e.getTotalAmount());
 			d.setOrderedAt(e.getOrderedAt());
+			d.setVersion(e.getVersion());
 			return d;
 		};
 
